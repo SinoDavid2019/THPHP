@@ -9,6 +9,7 @@
 namespace app\admin\controller;
 
 use think\Controller;
+use app\common\lib\IAuth;
 
 class Login extends Controller
 {
@@ -19,12 +20,49 @@ class Login extends Controller
 
     public function check()
     {
-        $data = input('post.');
-        if (!captcha_check($data['code'])) {
-            $this->error('验证码错误');
+        if (request()->isPost()) {
+            $data = input('post.');
+            if (!captcha_check($data['code'])) {
+                $this->error('验证码错误');
+            }
+            $validate = validate('AdminUser');
+            if (!$validate->check($data)) {
+                $this->error($validate->getError());
+            } else {
+                try {
+                    $user = model('AdminUser')->get(['username' => $data['username']]);
+
+                } catch (\Exception $exception) {
+                    $this->error($exception->getMessage());
+                }
+                if (!$user || $user->status != config('statusCode.status_normal')) {
+                    $this->error('该用户不存在');
+                } else {
+                    if (IAuth::setPassword($data['password']) != $user->password) {
+                        $this->error('密码不正确');
+                    } else {
+
+                        $update = [
+                            'last_login_time' => time(),
+                            'last_login_ip' => request()->ip()
+                        ];
+                        try {
+                            model('AdminUser')->save($update, ['id' => $user->id]);
+                        } catch (\Exception $exception) {
+                            $this->error($exception->getMessage());
+                        }
+
+                    }
+                }
+
+                session(config('admin.session_user'), $user);
+                $this->success('登录成功', 'index/index');
+            }
+
         } else {
-            $this->success('OK');
+            $this->error('请求不合法');
         }
+
     }
 
     public function welcome()
